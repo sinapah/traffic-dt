@@ -1,0 +1,4 @@
+*venv
+*DETRAC-*
+*DS_Store
+**__pycache__/
