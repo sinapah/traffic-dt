@@ -97,6 +97,7 @@ Edge 2 (15 fps) becomes overloaded during rush hours (arrival rate ~28 fps), cau
 - Training cost = `local_epochs × batch_size × dataset_size × cost_per_unit`
 - Convergence modeled as a logistic curve: `ceiling × (1 - e^{-speed × round})`
 - Configurable participation rate (default: 100%)
+- **Resource contention:** During FL training, the edge's effective service rate is reduced by a configurable fraction (default: 50%), creating real competition for processing capacity
 
 ## Digital Twin
 
@@ -105,8 +106,9 @@ Edge 2 (15 fps) becomes overloaded during rush hours (arrival rate ~28 fps), cau
 1. **Collects telemetry** from all edges via the TelemetryBus (queue length, utilization, processing rate, arrival rate, FL stats)
 2. **Maintains state** — current snapshot of every edge and the aggregate system
 3. **Records history** — timestamped state snapshots for later analysis
-4. **Estimates state during outages** — uses a prediction strategy to fill gaps
-5. **Generates recommendations** — parameter adjustments passed to the orchestrator
+4. **Estimates state during outages** — uses a prediction strategy with weighted moving average and linear trend extrapolation to fill gaps
+5. **Generates recommendations** — tiered parameter adjustments passed to the orchestrator
+6. **Self-calibrates** — uses post-outage estimation error to adjust future predictions via bias correction
 
 ### What It Controls (Two Knobs)
 
@@ -117,9 +119,10 @@ Edge 2 (15 fps) becomes overloaded during rush hours (arrival rate ~28 fps), cau
 
 ### Recommendation Logic
 
-The DT checks each edge's utilization against thresholds:
-- If utilization > target × 1.1 (overloaded): reduce epochs and sampling rate
-- If utilization < target × 0.7 (underloaded): increase epochs and sampling rate
+The DT checks each edge's utilization against tiered thresholds:
+- If utilization > 1.0 (overloaded): set `sampling_rate` proportional to `service_rate / arrival_rate`, reduce `local_epochs` to minimum
+- If utilization > target × 1.1 (mild overload): reduce `sampling_rate` by 20%, reduce `local_epochs` by 2
+- If utilization < target × 0.7 (underloaded): increase `sampling_rate` by 10%, increase `local_epochs` by 1
 
 ### Telemetry Outages
 
@@ -132,35 +135,13 @@ Default config creates an outage during sim-min 18–28 (real-world hour 18–28
 
 ## Limitations and Known Issues
 
-These are known gaps between the current implementation and the full spec in `agents.md`:
-
-### 1. Utilization metric is queue fill ratio, not processing utilization
-
-`queue.utilization = len(queue) / capacity`. With capacity=500 and typical queue lengths under 50, utilization tops out around 10%. The DT's target is 80%, so the thresholds are never crossed and the DT never triggers adjustments.
-
-**Fix needed:** Compute utilization as `arrival_rate / service_rate` (true load ratio).
-
-### 2. No resource contention between processing and FL
-
-The processing loop and FL training loop run independently via separate SimPy processes. FL training does not reduce the effective processing capacity of the edge. Adjusting `local_epochs` therefore has no visible effect on frame throughput.
-
-**Fix needed:** During FL training, temporarily reduce the edge's effective service rate.
-
-### 3. Baseline and DT-driven produce identical results
-
-Because of issues 1 and 2, the DT's recommendations either don't trigger (utilization too low) or don't have an effect (no contention). Both configurations produce the same metrics.
-
-### 4. Prediction is a naive rolling average
-
-`HistoricalPredictor` averages the last N telemetry packets. It does not model trends, seasonality, or correlations. The KDE and WGAN stubs delegate to the same historical average.
-
-### 5. Estimation error is not used for self-correction
-
-The DT computes post-outage error but does not feed it back into the predictor to improve future estimates.
-
-### 6. G/G/1 per edge, not G/G/s
+### 1. G/G/1 per edge, not G/G/s
 
 Each edge has an independent single-server queue. There is no cross-edge pooling or load balancing. If G/G/s (shared queue with parallel servers) is needed, the queue architecture would need to be restructured.
+
+### 2. Prediction strategies
+
+The KDE and WGAN predictor stubs delegate to the historical predictor. Full implementations would require training data and model infrastructure beyond the current scope.
 
 ## Configuration
 
@@ -201,7 +182,7 @@ Running `--mode compare` produces:
 | Plot | What it shows |
 |---|---|
 | `*_queue_length.png` | Per-edge queue length over time |
-| `*_utilization.png` | Per-edge queue fill ratio over time |
+| `*_utilization.png` | Per-edge load ratio (arrival_rate / service_rate) over time |
 | `*_latency.png` | Mean frame wait time per edge |
 | `*_throughput.png` | Processing rate per edge |
 | `*_fl_convergence.png` | FL convergence metric over rounds |

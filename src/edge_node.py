@@ -27,6 +27,7 @@ class EdgeNode:
         self.service_rate = config.service_rate
         self.sampling_rate = 1.0
         self.local_epochs = sim_config.fl.local_epochs
+        self._fl_config: FLConfig | None = None
 
         self._total_arrivals_window = 0
         self._total_processed_window = 0
@@ -45,7 +46,9 @@ class EdgeNode:
 
     @property
     def utilization(self) -> float:
-        return self.queue.utilization
+        if self.service_rate > 0:
+            return min(self._arrival_rate / self.service_rate, float("inf"))
+        return 0.0
 
     def run(self) -> simpy.Process:
         return self.env.process(self._process_loop())
@@ -56,6 +59,7 @@ class EdgeNode:
     def trigger_training(self, fl_round: int, convergence: float, fl_config: FLConfig) -> simpy.Event:
         self.fl_round = fl_round
         self.fl_convergence = convergence
+        self._fl_config = fl_config
         self._training_done = simpy.Event(self.env)
         self.training_process = self.env.process(
             self._training_loop(fl_config)
@@ -72,7 +76,10 @@ class EdgeNode:
             if self.rng.random() > self.sampling_rate:
                 continue
 
-            service_time = self.rng.exponential(1.0 / self.service_rate)
+            effective_rate = self.service_rate
+            if self._training_active and self._fl_config is not None:
+                effective_rate *= (1.0 - self._fl_config.training_resource_contention)
+            service_time = self.rng.exponential(1.0 / effective_rate)
             yield self.env.timeout(service_time)
 
     def _training_loop(self, fl_config: FLConfig) -> simpy.Generator:
@@ -98,7 +105,7 @@ class EdgeNode:
                 edge_id=self.config.edge_id,
                 queue_length=self.queue.length,
                 queue_capacity=self.config.queue_capacity,
-                utilization=self.queue.utilization,
+                utilization=self.utilization,
                 processing_rate=self._processing_rate,
                 arrival_rate=self._arrival_rate,
                 total_processed=self.queue.total_processed,

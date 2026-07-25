@@ -21,13 +21,15 @@
     "cost_per_unit": 0.001,
     "participation_rate": 1.0,
     "convergence_ceiling": 0.95,
-    "convergence_speed": 0.3
+    "convergence_speed": 0.3,
+    "training_resource_contention": 0.5
   },
   "dt": {
     "telemetry_interval": 0.5,
     "prediction": {
       "strategy": "historical",
-      "history_window": 10
+      "history_window": 10,
+      "trend_weight": 0.3
     }
   },
   "orchestrator": {

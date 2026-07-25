@@ -30,12 +30,14 @@ class FLConfig:
     participation_rate: float = 1.0
     convergence_ceiling: float = 0.95
     convergence_speed: float = 0.3
+    training_resource_contention: float = 0.5  # 0.0 = no contention, 1.0 = fully blocked
 
 
 @dataclass
 class PredictionConfig:
     strategy: str = "historical"
     history_window: int = 10
+    trend_weight: float = 0.3  # 0.0 = flat average only, 1.0 = full trend extrapolation
 
 
 @dataclass
@@ -97,12 +99,14 @@ class SimulationConfig:
                 "participation_rate": self.fl.participation_rate,
                 "convergence_ceiling": self.fl.convergence_ceiling,
                 "convergence_speed": self.fl.convergence_speed,
+                "training_resource_contention": self.fl.training_resource_contention,
             },
             "dt": {
                 "telemetry_interval": self.dt.telemetry_interval,
                 "prediction": {
                     "strategy": self.dt.prediction.strategy,
                     "history_window": self.dt.prediction.history_window,
+                    "trend_weight": self.dt.prediction.trend_weight,
                 },
             },
             "orchestrator": {
@@ -153,12 +157,14 @@ class SimulationConfig:
             participation_rate=fl_d.get("participation_rate", 1.0),
             convergence_ceiling=fl_d.get("convergence_ceiling", 0.95),
             convergence_speed=fl_d.get("convergence_speed", 0.3),
+            training_resource_contention=fl_d.get("training_resource_contention", 0.5),
         )
         dt_d = d.get("dt", {})
         pred_d = dt_d.get("prediction", {})
         prediction = PredictionConfig(
             strategy=pred_d.get("strategy", "historical"),
             history_window=pred_d.get("history_window", 10),
+            trend_weight=pred_d.get("trend_weight", 0.3),
         )
         dt = DTConfig(
             telemetry_interval=dt_d.get("telemetry_interval", 0.5),
