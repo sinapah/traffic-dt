@@ -29,7 +29,14 @@
     "prediction": {
       "strategy": "historical",
       "history_window": 10,
-      "trend_weight": 0.3
+      "trend_weight": 0.3,
+      "duration": 48.0,
+      "workload_schedule": [],
+      "kde_min_samples": 5,
+      "wgan_latent_dim": 8,
+      "wgan_hidden_dim": 32,
+      "wgan_train_epochs": 100,
+      "wgan_lambda_gp": 10.0
     }
   },
   "orchestrator": {

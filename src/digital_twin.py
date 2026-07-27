@@ -24,8 +24,19 @@ class DigitalTwin:
         self.config = config
         self.sim_config = sim_config
         self.bus = bus
+        pred = config.prediction
         self.predictor: PredictionStrategy = create_predictor(
-            config.prediction.strategy, config.prediction.history_window, config.prediction.trend_weight
+            strategy=pred.strategy,
+            window=pred.history_window,
+            trend_weight=pred.trend_weight,
+            duration=pred.duration if pred.duration > 0 else sim_config.duration,
+            workload_schedule=pred.workload_schedule or sim_config.workload_schedule,
+            kde_min_samples=pred.kde_min_samples,
+            wgan_latent_dim=pred.wgan_latent_dim,
+            wgan_hidden_dim=pred.wgan_hidden_dim,
+            wgan_train_epochs=pred.wgan_train_epochs,
+            wgan_lambda_gp=pred.wgan_lambda_gp,
+            seed=sim_config.seed,
         )
 
         self._edge_histories: dict[int, list[TelemetryPacket]] = {}
