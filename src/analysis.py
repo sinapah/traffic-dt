@@ -26,30 +26,30 @@ def run_distribution_analysis(
     estimated_archive: list[SystemState],
     outages: list[OutagePeriod],
     output_dir: str = "output",
-    strategy: str = "unknown",
 ) -> list[str]:
     paths: list[str] = []
     out = Path(output_dir)
+    out.mkdir(parents=True, exist_ok=True)
 
     actual = _extract_ground_truth(bus, outages)
     synth = _extract_estimates(estimated_archive, outages)
     if actual is None or synth is None:
         return paths
 
-    p = str(out / f"dt_distribution_histograms_{strategy}.png")
+    p = str(out / "distribution_histograms.png")
     _plot_histograms(actual, synth, p)
     paths.append(p)
 
-    p = str(out / f"dt_distribution_correlations_{strategy}.png")
+    p = str(out / "distribution_correlations.png")
     _plot_correlation_matrices(actual, synth, p)
     paths.append(p)
 
-    p = str(out / f"dt_distribution_joint_{strategy}.png")
+    p = str(out / "distribution_joint.png")
     _plot_joint_distributions(actual, synth, p)
     paths.append(p)
 
     errors = _compute_errors(actual, synth)
-    error_path = out / f"dt_distribution_errors_{strategy}.json"
+    error_path = out / "distribution_errors.json"
     with open(error_path, "w") as f:
         json.dump(errors, f, indent=2)
     paths.append(str(error_path))
