@@ -38,6 +38,13 @@ class PredictionConfig:
     strategy: str = "historical"
     history_window: int = 10
     trend_weight: float = 0.3  # 0.0 = flat average only, 1.0 = full trend extrapolation
+    duration: float = 48.0
+    workload_schedule: list[WorkloadPhase] = field(default_factory=list)
+    kde_min_samples: int = 5
+    wgan_latent_dim: int = 8
+    wgan_hidden_dim: int = 32
+    wgan_train_epochs: int = 100
+    wgan_lambda_gp: float = 10.0
 
 
 @dataclass
@@ -107,6 +114,16 @@ class SimulationConfig:
                     "strategy": self.dt.prediction.strategy,
                     "history_window": self.dt.prediction.history_window,
                     "trend_weight": self.dt.prediction.trend_weight,
+                    "duration": self.dt.prediction.duration,
+                    "workload_schedule": [
+                        {"hour": w.hour, "multiplier": w.multiplier}
+                        for w in self.dt.prediction.workload_schedule
+                    ],
+                    "kde_min_samples": self.dt.prediction.kde_min_samples,
+                    "wgan_latent_dim": self.dt.prediction.wgan_latent_dim,
+                    "wgan_hidden_dim": self.dt.prediction.wgan_hidden_dim,
+                    "wgan_train_epochs": self.dt.prediction.wgan_train_epochs,
+                    "wgan_lambda_gp": self.dt.prediction.wgan_lambda_gp,
                 },
             },
             "orchestrator": {
@@ -161,10 +178,23 @@ class SimulationConfig:
         )
         dt_d = d.get("dt", {})
         pred_d = dt_d.get("prediction", {})
+        ws_list = pred_d.get("workload_schedule", [])
+        if ws_list is None:
+            ws_list = []
+        workload_schedule_pred = [
+            WorkloadPhase(hour=w["hour"], multiplier=w["multiplier"]) for w in ws_list
+        ]
         prediction = PredictionConfig(
             strategy=pred_d.get("strategy", "historical"),
             history_window=pred_d.get("history_window", 10),
             trend_weight=pred_d.get("trend_weight", 0.3),
+            duration=pred_d.get("duration", 48.0),
+            workload_schedule=workload_schedule_pred,
+            kde_min_samples=pred_d.get("kde_min_samples", 5),
+            wgan_latent_dim=pred_d.get("wgan_latent_dim", 8),
+            wgan_hidden_dim=pred_d.get("wgan_hidden_dim", 32),
+            wgan_train_epochs=pred_d.get("wgan_train_epochs", 100),
+            wgan_lambda_gp=pred_d.get("wgan_lambda_gp", 10.0),
         )
         dt = DTConfig(
             telemetry_interval=dt_d.get("telemetry_interval", 0.5),

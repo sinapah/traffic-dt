@@ -141,7 +141,28 @@ Each edge has an independent single-server queue. There is no cross-edge pooling
 
 ### 2. Prediction strategies
 
-The KDE and WGAN predictor stubs delegate to the historical predictor. Full implementations would require training data and model infrastructure beyond the current scope.
+Three strategies are available via `dt.prediction.strategy` in config:
+
+| Strategy | Description |
+|---|---|
+| `historical` | Exponentially-weighted moving average with linear trend extrapolation and post-outage bias correction. Default. |
+| `kde` | Gaussian Kernel Density Estimation. Builds per-phase KDE models (6 workload phases) from pre-outage telemetry. During outages, samples from the phase-matched KDE. Falls back to `historical` when fewer than `kde_min_samples` observations exist for the current phase. Requires only NumPy. |
+| `wgan` | Wasserstein GAN with gradient penalty (WGAN-GP). Trains a small generator MLP (latent noise + phase one-hot → 5 metrics) online during normal operation, retraining every 5 sim-minutes. During outages, samples from the generator conditioned on the current workload phase. Falls back to `kde` → `historical` when training data are insufficient. Requires PyTorch. |
+
+KDE and WGAN both condition predictions on the current **workload phase** (night / morning-ramp / morning-peak / midday / evening-ramp / evening), improving accuracy when outages span periods with different traffic intensities.
+
+Key new config parameters under `dt.prediction`:
+
+```json
+{
+  "strategy": "kde",
+  "kde_min_samples": 5,
+  "wgan_latent_dim": 8,
+  "wgan_hidden_dim": 32,
+  "wgan_train_epochs": 100,
+  "wgan_lambda_gp": 10.0
+}
+```
 
 ## Configuration
 
