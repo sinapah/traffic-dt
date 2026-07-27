@@ -2,13 +2,19 @@ from __future__ import annotations
 
 import argparse
 import json
-import sys
 from pathlib import Path
 
 from src.config import SimulationConfig
 from src.simulation import Simulation
 from src.comparison import compare
 from src.visualization import plot_all
+
+
+def _save_summary(summary: dict, path: Path) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with open(path, "w") as f:
+        json.dump(summary, f, indent=2, default=str)
+    print(f"Metrics summary saved to {path}")
 
 
 def main() -> None:
@@ -38,39 +44,30 @@ def main() -> None:
     output_dir.mkdir(parents=True, exist_ok=True)
 
     if args.mode == "compare":
-        baseline, dt_result, plots = compare(config, output_dir=str(output_dir))
+        compare(config, output_dir=str(output_dir))
     elif args.mode == "baseline":
         from src.comparison import run_baseline
         result = run_baseline(config)
+        base_dir = output_dir / "baseline"
         plots = plot_all(
             result.metrics,
             outages=config.outages,
-            output_dir=str(output_dir),
-            prefix="baseline_",
+            output_dir=str(base_dir),
         )
+        _save_summary(result.metrics.get_summary(), base_dir / "metrics_summary.json")
         print(f"\nBaseline run complete. Plots: {plots}")
     else:
         sim = Simulation(config)
         result = sim.run(dt_enabled=True)
+        dt_dir = output_dir / "dt"
         plots = plot_all(
             result.metrics,
             outages=config.outages,
             dt_errors=result.digital_twin.estimation_errors if result.digital_twin else None,
-            output_dir=str(output_dir),
-            prefix="dt_",
+            output_dir=str(dt_dir),
         )
+        _save_summary(result.metrics.get_summary(), dt_dir / "metrics_summary.json")
         print(f"\nDT-driven run complete. Plots: {plots}")
-
-    summary = {}
-    if args.mode in ("single", "baseline"):
-        summary = result.metrics.get_summary()
-    else:
-        summary = baseline.metrics.get_summary()
-
-    summary_path = output_dir / "metrics_summary.json"
-    with open(summary_path, "w") as f:
-        json.dump(summary, f, indent=2, default=str)
-    print(f"Metrics summary saved to {summary_path}")
 
 
 if __name__ == "__main__":

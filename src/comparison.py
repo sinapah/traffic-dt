@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import json
+from pathlib import Path
+
 from src.analysis import run_distribution_analysis
 from src.config import SimulationConfig
 from src.simulation import Simulation, SimulationResult
@@ -25,18 +28,21 @@ def compare(
     baseline = run_baseline(config)
     dt_result = run_dt_driven(config)
 
+    out = Path(output_dir)
+
+    baseline_dir = str(out / "baseline")
+    dt_dir = str(out / "dt")
+
     baseline_paths = plot_all(
         baseline.metrics,
         outages=config.outages,
-        output_dir=output_dir,
-        prefix="baseline_",
+        output_dir=baseline_dir,
     )
     dt_paths = plot_all(
         dt_result.metrics,
         outages=config.outages,
         dt_errors=dt_result.digital_twin.estimation_errors if dt_result.digital_twin else None,
-        output_dir=output_dir,
-        prefix="dt_",
+        output_dir=dt_dir,
     )
 
     print("\n" + "=" * 60)
@@ -67,15 +73,20 @@ def compare(
 
     analysis_paths: list[str] = []
     if dt_result.digital_twin:
+        strategy = config.dt.prediction.strategy
+        analysis_dir = str(out / "dt" / strategy)
         analysis_paths = run_distribution_analysis(
             bus=dt_result.telemetry_bus,
             estimated_archive=dt_result.digital_twin.estimated_archive,
             outages=config.outages,
-            output_dir=output_dir,
-            strategy=config.dt.prediction.strategy,
+            output_dir=analysis_dir,
         )
 
     all_paths = baseline_paths + dt_paths + analysis_paths
+
+    _save_summary(b_summary, out / "baseline" / "metrics_summary.json")
+    _save_summary(d_summary, out / "dt" / "metrics_summary.json")
+
     print(f"\nBaseline plots: {baseline_paths}")
     print(f"DT-driven plots: {dt_paths}")
     if analysis_paths:
@@ -83,3 +94,10 @@ def compare(
     print("=" * 60)
 
     return baseline, dt_result, all_paths
+
+
+def _save_summary(summary: dict, path: Path) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with open(path, "w") as f:
+        json.dump(summary, f, indent=2, default=str)
+    print(f"Metrics summary saved to {path}")

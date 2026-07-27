@@ -151,7 +151,6 @@ def plot_all(
     outages: list[OutagePeriod] | None = None,
     dt_errors: list[tuple[float, float]] | None = None,
     output_dir: str = "output",
-    prefix: str = "",
 ) -> list[str]:
     out = Path(output_dir)
     out.mkdir(parents=True, exist_ok=True)
@@ -163,14 +162,14 @@ def plot_all(
         ("throughput", plot_throughput),
         ("fl_convergence", plot_fl_convergence),
     ]:
-        p = str(out / f"{prefix}{name}.png")
+        p = str(out / f"{name}.png")
         if name == "fl_convergence":
             func(metrics, save_path=p)
         else:
             func(metrics, outages=outages, save_path=p)
         paths.append(p)
     if dt_errors:
-        p = str(out / f"{prefix}dt_estimation_error.png")
+        p = str(out / "dt_estimation_error.png")
         plot_dt_estimation_error(dt_errors, outages=outages, save_path=p)
         paths.append(p)
     return paths
