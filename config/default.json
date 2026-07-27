@@ -27,7 +27,7 @@
   "dt": {
     "telemetry_interval": 0.5,
     "prediction": {
-      "strategy": "historical",
+      "strategy": "wgan",
       "history_window": 10,
       "trend_weight": 0.3,
       "duration": 48.0,
@@ -40,7 +40,7 @@
     }
   },
   "orchestrator": {
-    "enabled": false,
+    "enabled": true,
     "adjustment_interval": 2.0,
     "target_utilization": 0.80,
     "max_local_epochs": 10,

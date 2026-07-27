@@ -11,18 +11,18 @@ python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
 
-# Run baseline vs DT-driven comparison
+# Run comparison: baseline (no DT) vs DT-driven
 python -m src.main --mode compare
 
 # Run individual modes
 python -m src.main --mode single        # DT-driven only
-python -m src.main --mode baseline      # Fixed policies, no DT
+python -m src.main --mode baseline      # No DT, no orchestrator
 
-# Custom config and seed
-python -m src.main --config config/baseline.json --seed 123
+# Custom seed
+python -m src.main --seed 123
 ```
 
-Outputs go to `output/`: PNG plots and a `metrics_summary.json`.
+Outputs go to `output/`: PNG plots and `metrics_summary.json` per run.
 
 ## Architecture
 
@@ -139,14 +139,25 @@ Default config creates an outage during sim-min 18–28 (real-world hour 18–28
 
 Each edge has an independent single-server queue. There is no cross-edge pooling or load balancing. If G/G/s (shared queue with parallel servers) is needed, the queue architecture would need to be restructured.
 
-### 2. Prediction strategies
+### 2. Baseline vs Historical — important distinction
 
-Three strategies are available via `dt.prediction.strategy` in config:
+Two terms that sound similar but mean different things:
+
+| Term | What it is | Applies to |
+|---|---|---|
+| **Baseline** | A **run mode** (`--mode baseline` or the internal comparison run). Runs the simulation **without a Digital Twin at all** — no telemetry estimation, no orchestration. Shows what happens naturally. | Entire simulation |
+| **Historical** | A **prediction strategy** (`dt.prediction.strategy: "historical"`). Used *within* the DT to estimate telemetry during an outage using exponentially-weighted moving averages. | DT's outage estimator |
+
+In other words: the baseline tells you "what would happen with no DT." The historical strategy tells you "how the DT fills gaps when it's active." They are not interchangeable.
+
+### 3. Prediction strategies
+
+The DT supports three pluggable prediction strategies set via `dt.prediction.strategy`:
 
 | Strategy | Description |
 |---|---|
 | `historical` | Exponentially-weighted moving average with linear trend extrapolation and post-outage bias correction. Default. |
-| `kde` | Gaussian Kernel Density Estimation. Builds per-phase KDE models (6 workload phases) from pre-outage telemetry. During outages, samples from the phase-matched KDE. Falls back to `historical` when fewer than `kde_min_samples` observations exist for the current phase. Requires only NumPy. |
+| `kde` | Multivariate Gaussian Kernel Density Estimation. Models the joint 5-dimensional distribution (queue_length, arrival_rate, utilization, processing_rate, mean_wait_time) per workload phase, preserving cross-metric correlations. Falls back to `historical` when fewer than `kde_min_samples` observations exist for the current phase. Requires only NumPy. |
 | `wgan` | Wasserstein GAN with gradient penalty (WGAN-GP). Trains a small generator MLP (latent noise + phase one-hot → 5 metrics) online during normal operation, retraining every 5 sim-minutes. During outages, samples from the generator conditioned on the current workload phase. Falls back to `kde` → `historical` when training data are insufficient. Requires PyTorch. |
 
 KDE and WGAN both condition predictions on the current **workload phase** (night / morning-ramp / morning-peak / midday / evening-ramp / evening), improving accuracy when outages span periods with different traffic intensities.
@@ -166,14 +177,7 @@ Key new config parameters under `dt.prediction`:
 
 ## Configuration
 
-Two config files are provided:
-
-| File | DT Enabled | Orchestrator | Purpose |
-|---|---|---|---|
-| `config/default.json` | Yes | Yes | Full DT-driven orchestration |
-| `config/baseline.json` | Yes (no recommendations) | Disabled | Fixed policies for comparison |
-
-Key parameters:
+The default config file is `config/default.json`. Key parameters:
 
 ```json
 {
@@ -198,16 +202,44 @@ Key parameters:
 
 ## Outputs
 
-Running `--mode compare` produces:
+Running `--mode compare` produces the following directory structure under `output/`:
+
+```
+output/
+  baseline/                      # Reference run (no DT)
+    queue_length.png
+    utilization.png
+    latency.png
+    throughput.png
+    fl_convergence.png
+    metrics_summary.json
+  dt/                            # DT-driven run
+    queue_length.png
+    utilization.png
+    latency.png
+    throughput.png
+    fl_convergence.png
+    dt_estimation_error.png
+    metrics_summary.json
+    historical/                  # Strategy-specific distribution analysis
+      distribution_histograms.png
+      distribution_correlations.png
+      distribution_joint.png
+      distribution_errors.json
+```
 
 | Plot | What it shows |
 |---|---|
-| `*_queue_length.png` | Per-edge queue length over time |
-| `*_utilization.png` | Per-edge load ratio (arrival_rate / service_rate) over time |
-| `*_latency.png` | Mean frame wait time per edge |
-| `*_throughput.png` | Processing rate per edge |
-| `*_fl_convergence.png` | FL convergence metric over rounds |
-| `dt_dt_estimation_error.png` | DT estimation error during/after outage |
+| `queue_length.png` | Per-edge queue length over time |
+| `utilization.png` | Per-edge load ratio (arrival_rate / service_rate) over time |
+| `latency.png` | Mean frame wait time per edge |
+| `throughput.png` | Processing rate per edge |
+| `fl_convergence.png` | FL convergence metric over rounds |
+| `dt_estimation_error.png` | DT estimation error during/after outage |
+| `distribution_histograms.png` | Ground truth vs synthesized distribution overlay (per metric) |
+| `distribution_correlations.png` | Ground truth vs synthesized correlation matrices |
+| `distribution_joint.png` | Joint-distribution scatter plots for metric pairs |
+| `distribution_errors.json` | Per-metric MAE, RMSE, and correlation fidelity score |
 | `metrics_summary.json` | Aggregate stats (mean, max, p50, p95) for all metrics |
 
-Plots include red shaded bands marking telemetry outage periods.
+All plots include red shaded bands marking telemetry outage periods.
