@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from src.analysis import run_distribution_analysis
 from src.config import SimulationConfig
 from src.simulation import Simulation, SimulationResult
 from src.visualization import plot_all
@@ -64,8 +65,21 @@ def compare(
         errors = [e for _, e in dt_result.digital_twin.estimation_errors]
         print(f"DT estimation error: mean={sum(errors)/len(errors):.4f}, max={max(errors):.4f}")
 
+    analysis_paths: list[str] = []
+    if dt_result.digital_twin:
+        analysis_paths = run_distribution_analysis(
+            bus=dt_result.telemetry_bus,
+            estimated_archive=dt_result.digital_twin.estimated_archive,
+            outages=config.outages,
+            output_dir=output_dir,
+            strategy=config.dt.prediction.strategy,
+        )
+
+    all_paths = baseline_paths + dt_paths + analysis_paths
     print(f"\nBaseline plots: {baseline_paths}")
     print(f"DT-driven plots: {dt_paths}")
+    if analysis_paths:
+        print(f"Distribution analysis: {analysis_paths}")
     print("=" * 60)
 
-    return baseline, dt_result, baseline_paths + dt_paths
+    return baseline, dt_result, all_paths
