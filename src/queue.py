@@ -29,10 +29,6 @@ class BoundedQueue:
         return len(self._queue) >= self.capacity
 
     @property
-    def utilization(self) -> float:
-        return len(self._queue) / self.capacity if self.capacity > 0 else 0.0
-
-    @property
     def mean_wait_time(self) -> float:
         return sum(self._wait_times) / len(self._wait_times) if self._wait_times else 0.0
 

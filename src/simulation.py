@@ -107,7 +107,7 @@ class Simulation:
                 yield env.timeout(0.25)
                 for edge_id, edge in edges.items():
                     metrics.record(env.now, "queue_length", edge.queue.length, edge_id=edge_id)
-                    metrics.record(env.now, "utilization", edge.queue.utilization, edge_id=edge_id)
+                    metrics.record(env.now, "utilization", edge.utilization, edge_id=edge_id)
                     metrics.record(env.now, "processing_rate", edge._processing_rate, edge_id=edge_id)
                     metrics.record(env.now, "arrival_rate", edge._arrival_rate, edge_id=edge_id)
                     metrics.record(env.now, "wait_time", edge.queue.mean_wait_time, edge_id=edge_id)

@@ -25,7 +25,7 @@ class DigitalTwin:
         self.sim_config = sim_config
         self.bus = bus
         self.predictor: PredictionStrategy = create_predictor(
-            config.prediction.strategy, config.prediction.history_window
+            config.prediction.strategy, config.prediction.history_window, config.prediction.trend_weight
         )
 
         self._edge_histories: dict[int, list[TelemetryPacket]] = {}
@@ -143,6 +143,10 @@ class DigitalTwin:
             q_error = abs(est.aggregate_queue_length - actual.aggregate_queue_length)
             u_error = abs(est.aggregate_arrival_rate - actual.aggregate_arrival_rate)
             self.estimation_errors.append((est.timestamp, (q_error + u_error) / 2.0))
+            dt = est.timestamp - (self.estimated_history[0].timestamp if len(self.estimated_history) > 1 else est.timestamp)
+            for edge_id, est_edge in est.edges.items():
+                if edge_id in actual.edges:
+                    self.predictor.calibrate(actual.edges[edge_id], est_edge, dt)
         self.estimated_history.clear()
 
     @staticmethod
@@ -191,10 +195,20 @@ class DigitalTwin:
         recs = {}
         for edge_id, edge_state in state.edges.items():
             target_util = orch.target_utilization
-            if edge_state.utilization > target_util * 1.1:
+            if edge_state.utilization > 1.0:
+                if edge_state.arrival_rate > 0:
+                    desired_sampling = edge_state.processing_rate / edge_state.arrival_rate
+                    new_sampling = max(orch.min_sampling_rate, min(orch.max_sampling_rate, desired_sampling))
+                else:
+                    new_sampling = orch.min_sampling_rate
                 recs[edge_id] = {
-                    "local_epochs": max(orch.min_local_epochs, edge_state.local_epochs - 1),
-                    "sampling_rate": max(orch.min_sampling_rate, edge_state.sampling_rate * 0.9),
+                    "local_epochs": orch.min_local_epochs,
+                    "sampling_rate": new_sampling,
+                }
+            elif edge_state.utilization > target_util * 1.1:
+                recs[edge_id] = {
+                    "local_epochs": max(orch.min_local_epochs, edge_state.local_epochs - 2),
+                    "sampling_rate": max(orch.min_sampling_rate, edge_state.sampling_rate * 0.8),
                 }
             elif edge_state.utilization < target_util * 0.7:
                 recs[edge_id] = {
