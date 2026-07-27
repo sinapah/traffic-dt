@@ -224,31 +224,48 @@ class HistoricalPredictor(PredictionStrategy):
 # ---------------------------------------------------------------------------
 
 
-class _SimpleKDE:
-    """1-D Gaussian Kernel Density Estimator using only NumPy.
+class _MultiVariateKDE:
+    """Multivariate Gaussian KDE (d=5) using only NumPy.
 
-    Bandwidth selection: Scott's rule — ``h = 1.06 * std * n^(-1/5)``.
-    Sampling: pick a random observation then add Gaussian noise scaled by *h*
-    (Silverman's "sample-smooth" approach).
+    Models the joint 5-dimensional distribution of all telemetry metrics,
+    preserving cross-metric correlations (e.g. high arrival_rate ↔ high
+    queue_length).
+
+    Bandwidth selection: multivariate Scott's rule —
+        H = n^(-2/(d+4)) * cov(data)
+    where d=5 and cov(data) is the empirical covariance matrix.
+
+    Sampling: pick a random observation then add Gaussian noise with
+    covariance H (Silverman's sample-smooth approach).
     """
 
     def __init__(self) -> None:
-        self._obs: list[float] = []
-        self._bw: float = 1.0
+        self._obs: list[np.ndarray] = []
 
-    def add(self, value: float) -> None:
-        self._obs.append(value)
-        if len(self._obs) >= 2:
+    def add(self, metrics: dict[str, float]) -> None:
+        vec = np.array([metrics[m] for m in _METRIC_NAMES])
+        self._obs.append(vec)
+
+    def sample(self, rng: np.random.Generator) -> dict[str, float]:
+        n = len(self._obs)
+        if n == 0:
+            return {m: 0.0 for m in _METRIC_NAMES}
+
+        idx = int(rng.integers(n))
+        obs = self._obs[idx]
+
+        if n >= 2:
+            d = len(_METRIC_NAMES)
             arr = np.array(self._obs)
-            std = float(np.std(arr))
-            n = len(self._obs)
-            # Scott's rule; clamp bandwidth to avoid collapse on near-constant data
-            self._bw = max(1e-6, 1.06 * std * n ** (-0.2))
+            cov = np.cov(arr, rowvar=False)
+            cov += 1e-6 * np.eye(d)
+            h = n ** (-1.0 / (d + 4))
+            noise = rng.multivariate_normal(np.zeros(d), h ** 2 * cov)
+            vals = obs + noise
+        else:
+            vals = obs
 
-    def sample(self, rng: np.random.Generator) -> float:
-        """Draw one sample via random-observation + Gaussian noise."""
-        idx = int(rng.integers(len(self._obs)))
-        return float(self._obs[idx] + rng.normal(0.0, self._bw))
+        return {m: max(0.0, float(vals[i])) for i, m in enumerate(_METRIC_NAMES)}
 
     @property
     def n(self) -> int:
@@ -256,9 +273,13 @@ class _SimpleKDE:
 
 
 class _PhaseKDEStore:
-    """Per-phase, per-metric KDE storage for one edge.
+    """Per-phase multivariate KDE storage for one edge.
 
-    Internally structured as ``{phase_idx: {metric_name: _SimpleKDE}}``.
+    Internally structured as ``{phase_idx: _MultiVariateKDE}``.
+    Unlike the previous per-metric 1-D KDE approach, this models the
+    joint 5-dimensional distribution of all telemetry metrics, preserving
+    cross-metric correlations.
+
     Observations are ingested with :meth:`add_observation`; the predictor
     calls :meth:`can_sample` to gate whether it has enough data, and
     :meth:`sample` to draw a full metric dict for a given phase.
@@ -267,14 +288,12 @@ class _PhaseKDEStore:
     def __init__(self, num_phases: int = _NUM_PHASES, min_samples: int = 5) -> None:
         self._num_phases = num_phases
         self._min_samples = min_samples
-        self._kdes: dict[int, dict[str, _SimpleKDE]] = {}
-        # Track which (phase, packet-timestamp) pairs have been ingested to
-        # avoid double-counting the same packet on repeated calls.
+        self._kdes: dict[int, _MultiVariateKDE] = {}
         self._seen_timestamps: dict[int, set[float]] = {}
 
-    def _ensure_phase(self, phase: int) -> dict[str, _SimpleKDE]:
+    def _ensure_phase(self, phase: int) -> _MultiVariateKDE:
         if phase not in self._kdes:
-            self._kdes[phase] = {m: _SimpleKDE() for m in _METRIC_NAMES}
+            self._kdes[phase] = _MultiVariateKDE()
             self._seen_timestamps[phase] = set()
         return self._kdes[phase]
 
@@ -284,7 +303,6 @@ class _PhaseKDEStore:
         timestamp: float,
         metrics: dict[str, float],
     ) -> None:
-        """Ingest one telemetry observation; silently skips duplicates."""
         seen = self._seen_timestamps.get(phase)
         if seen is None:
             self._ensure_phase(phase)
@@ -292,18 +310,14 @@ class _PhaseKDEStore:
         if timestamp in seen:
             return
         seen.add(timestamp)
-        kde_dict = self._kdes[phase]
-        for name in _METRIC_NAMES:
-            kde_dict[name].add(metrics[name])
+        self._kdes[phase].add(metrics)
 
     def can_sample(self, phase: int) -> bool:
-        if phase not in self._kdes:
-            return False
-        return all(kde.n >= self._min_samples for kde in self._kdes[phase].values())
+        kde = self._kdes.get(phase)
+        return kde is not None and kde.n >= self._min_samples
 
     def sample(self, phase: int, rng: np.random.Generator) -> dict[str, float]:
-        kde_dict = self._kdes[phase]
-        return {name: kde.sample(rng) for name, kde in kde_dict.items()}
+        return self._kdes[phase].sample(rng)
 
 
 # ---------------------------------------------------------------------------

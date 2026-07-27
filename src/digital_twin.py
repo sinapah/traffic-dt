@@ -47,6 +47,7 @@ class DigitalTwin:
 
         self.state_history: list[SystemState] = []
         self.estimated_history: list[SystemState] = []
+        self.estimated_archive: list[SystemState] = []
         self.estimation_errors: list[tuple[float, float]] = []
 
         self._last_fl_round = 0
@@ -158,6 +159,7 @@ class DigitalTwin:
             for edge_id, est_edge in est.edges.items():
                 if edge_id in actual.edges:
                     self.predictor.calibrate(actual.edges[edge_id], est_edge, dt)
+        self.estimated_archive.extend(self.estimated_history)
         self.estimated_history.clear()
 
     @staticmethod
