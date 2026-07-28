@@ -2,21 +2,37 @@ from __future__ import annotations
 
 import math
 import random
+from collections import OrderedDict
 
 import simpy
+import torch
+from torch.utils.data import DataLoader
 
 from src.config import FLConfig
+from src.dataset import DetracDataset
+from src.model import evaluate
 
 
 class FLCoordinator:
-    def __init__(self, env: simpy.Environment, fl_config: FLConfig, rng: random.Random | None = None):
+    def __init__(
+        self,
+        env: simpy.Environment,
+        fl_config: FLConfig,
+        rng: random.Random | None = None,
+        global_model: torch.nn.Module | None = None,
+        val_loader: DataLoader | None = None,
+    ):
         self.env = env
         self.config = fl_config
         self.rng = rng or random.Random()
+        self.global_model = global_model
+        self.val_loader = val_loader
         self.round_number = 0
         self.round_durations: list[float] = []
         self.round_participants: list[int] = []
         self.round_convergence: list[float] = []
+        self.round_losses: list[float] = []
+        self.round_accuracy: list[dict[str, float]] = []
         self.aggregation_count = 0
         self._current_convergence = 0.0
 
@@ -45,12 +61,38 @@ class FLCoordinator:
             if training_events:
                 yield simpy.AnyOf(self.env, training_events)
 
+            state_dicts = []
+            losses = []
+            for edge in active_edges:
+                sd = edge.get_trained_state()
+                if sd is not None:
+                    state_dicts.append(sd)
+                    losses.append(edge.get_training_loss())
+
+            if state_dicts:
+                avg_state = self._fedavg(state_dicts)
+                self._broadcast(edges, avg_state)
+
+                if self.global_model is not None:
+                    self.global_model.load_state_dict(avg_state)
+
+                avg_loss = sum(losses) / len(losses) if losses else 0.0
+                self.round_losses.append(avg_loss)
+
+                if self.val_loader is not None and self.global_model is not None:
+                    acc = evaluate(self.global_model, self.val_loader)
+                    self.round_accuracy.append(acc)
+                    mAP = acc.get("mAP", 0.0)
+                    self._current_convergence = mAP
+                else:
+                    self._current_convergence = self._compute_convergence(self.round_number)
+            else:
+                self._current_convergence = self._compute_convergence(self.round_number)
+
             round_duration = self.env.now - round_start
             self.round_durations.append(round_duration)
             self.round_participants.append(len(active_edges))
             self.aggregation_count += 1
-
-            self._current_convergence = self._compute_convergence(self.round_number)
             self.round_convergence.append(self._current_convergence)
 
             callback(
@@ -64,6 +106,20 @@ class FLCoordinator:
         ceiling = self.config.convergence_ceiling
         speed = self.config.convergence_speed
         return ceiling * (1.0 - math.exp(-speed * round_num))
+
+    @staticmethod
+    def _fedavg(state_dicts: list[dict[str, torch.Tensor]]) -> dict[str, torch.Tensor]:
+        avg: OrderedDict[str, torch.Tensor] = OrderedDict()
+        keys = state_dicts[0].keys()
+        for key in keys:
+            stacked = torch.stack([sd[key].float() for sd in state_dicts], dim=0)
+            avg[key] = stacked.mean(dim=0)
+        return avg
+
+    def _broadcast(self, edges: list, state_dict: dict[str, torch.Tensor]) -> None:
+        for edge in edges:
+            if edge.model is not None:
+                edge.model.load_state_dict(state_dict)
 
     @property
     def current_convergence(self) -> float:

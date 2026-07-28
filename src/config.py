@@ -31,6 +31,8 @@ class FLConfig:
     convergence_ceiling: float = 0.95
     convergence_speed: float = 0.3
     training_resource_contention: float = 0.5  # 0.0 = no contention, 1.0 = fully blocked
+    learning_rate: float = 0.001
+    fine_tune_epochs: int = 1
 
 
 @dataclass
@@ -90,6 +92,9 @@ class SimulationConfig:
     outages: list[OutagePeriod] = field(default_factory=list)
     workload_schedule: list[WorkloadPhase] = field(default_factory=list)
     seed: int | None = None
+    dataset_path: str = "DETRAC-Images/DETRAC-Images"
+    annotation_path: str = "DETRAC-Train-Annotations-XML/DETRAC-Train-Annotations-XML"
+    global_val_ratio: float = 0.1
 
     def to_dict(self) -> dict[str, Any]:
         d = {
@@ -107,6 +112,8 @@ class SimulationConfig:
                 "convergence_ceiling": self.fl.convergence_ceiling,
                 "convergence_speed": self.fl.convergence_speed,
                 "training_resource_contention": self.fl.training_resource_contention,
+                "learning_rate": self.fl.learning_rate,
+                "fine_tune_epochs": self.fl.fine_tune_epochs,
             },
             "dt": {
                 "telemetry_interval": self.dt.telemetry_interval,
@@ -141,6 +148,9 @@ class SimulationConfig:
                 for w in self.workload_schedule
             ],
             "seed": self.seed,
+            "dataset_path": self.dataset_path,
+            "annotation_path": self.annotation_path,
+            "global_val_ratio": self.global_val_ratio,
         }
         if self.cameras:
             d["cameras"] = [
@@ -175,6 +185,8 @@ class SimulationConfig:
             convergence_ceiling=fl_d.get("convergence_ceiling", 0.95),
             convergence_speed=fl_d.get("convergence_speed", 0.3),
             training_resource_contention=fl_d.get("training_resource_contention", 0.5),
+            learning_rate=fl_d.get("learning_rate", 0.001),
+            fine_tune_epochs=fl_d.get("fine_tune_epochs", 1),
         )
         dt_d = d.get("dt", {})
         pred_d = dt_d.get("prediction", {})
@@ -226,6 +238,9 @@ class SimulationConfig:
             outages=outages,
             workload_schedule=workload,
             seed=d.get("seed"),
+            dataset_path=d.get("dataset_path", "DETRAC-Images/DETRAC-Images"),
+            annotation_path=d.get("annotation_path", "DETRAC-Train-Annotations-XML/DETRAC-Train-Annotations-XML"),
+            global_val_ratio=d.get("global_val_ratio", 0.1),
         )
 
     @classmethod

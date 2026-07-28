@@ -17,6 +17,7 @@ class Camera:
         queue: BoundedQueue,
         workload: WorkloadSchedule,
         rng: np.random.Generator,
+        image_paths: list[str] | None = None,
     ):
         self.env = env
         self.config = config
@@ -25,6 +26,8 @@ class Camera:
         self.workload = workload
         self.rng = rng
         self.frame_counter = 0
+        self.image_paths = image_paths or []
+        self._image_index = 0
 
     def run(self) -> simpy.Process:
         return self.env.process(self._generate_frames())
@@ -36,9 +39,15 @@ class Camera:
             inter_arrival = self.rng.exponential(1.0 / rate)
             yield self.env.timeout(inter_arrival)
             self.frame_counter += 1
+            image_path = None
+            if self.image_paths:
+                idx = self._image_index % len(self.image_paths)
+                image_path = self.image_paths[idx]
+                self._image_index += 1
             frame = Frame(
                 timestamp=self.env.now,
                 camera_id=self.config.camera_id,
                 frame_id=self.frame_counter,
+                image_path=image_path,
             )
             self.queue.put(frame)

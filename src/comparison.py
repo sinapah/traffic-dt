@@ -67,6 +67,15 @@ def compare(
     print(f"\nFL rounds completed: baseline={baseline.fl_coordinator.round_number}, dt={dt_result.fl_coordinator.round_number}")
     print(f"FL convergence:     baseline={baseline.fl_coordinator.current_convergence:.4f}, dt={dt_result.fl_coordinator.current_convergence:.4f}")
 
+    if baseline.fl_coordinator.round_accuracy:
+        b_mAP = baseline.fl_coordinator.round_accuracy[-1].get("mAP", 0.0)
+        d_mAP = dt_result.fl_coordinator.round_accuracy[-1].get("mAP", 0.0) if dt_result.fl_coordinator.round_accuracy else 0.0
+        print(f"FL final mAP:       baseline={b_mAP:.4f}, dt={d_mAP:.4f}")
+    if baseline.fl_coordinator.round_losses:
+        b_loss = baseline.fl_coordinator.round_losses[-1]
+        d_loss = dt_result.fl_coordinator.round_losses[-1] if dt_result.fl_coordinator.round_losses else 0.0
+        print(f"FL final loss:      baseline={b_loss:.4f}, dt={d_loss:.4f}")
+
     if dt_result.digital_twin and dt_result.digital_twin.estimation_errors:
         errors = [e for _, e in dt_result.digital_twin.estimation_errors]
         print(f"DT estimation error: mean={sum(errors)/len(errors):.4f}, max={max(errors):.4f}")

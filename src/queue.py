@@ -9,6 +9,7 @@ class Frame:
     timestamp: float
     camera_id: int
     frame_id: int
+    image_path: str | None = None
 
 
 class BoundedQueue:

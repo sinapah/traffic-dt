@@ -116,9 +116,44 @@ def plot_fl_convergence(
     if t:
         ax.plot(t, v, linewidth=1.2, color="purple")
     ax.set_xlabel("Simulation time (min)")
-    ax.set_ylabel("Convergence metric")
-    ax.set_title("Federated Learning Convergence")
+    ax.set_ylabel("mAP@0.5" if any(v) else "Convergence metric")
+    ax.set_title("FL Accuracy (mAP)")
     ax.grid(True, alpha=0.3)
+    plt.tight_layout()
+    if save_path:
+        fig.savefig(save_path, dpi=150)
+    plt.close(fig)
+
+
+def plot_fl_accuracy(
+    metrics: MetricsCollector,
+    save_path: str | None = None,
+) -> None:
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 5))
+    t, mAP = metrics.get_series("fl_mAP")
+    if t:
+        ax1.plot(t, mAP, linewidth=1.2, color="green", label="mAP@0.5:0.95")
+    t, mAP50 = metrics.get_series("fl_mAP_0_50")
+    if t and mAP50:
+        ax1.plot(t, mAP50, linewidth=1.0, color="blue", linestyle="--", label="mAP@0.5")
+    if not t:
+        t, mAP50 = metrics.get_series("fl_convergence")
+        if t:
+            ax1.plot(t, mAP50, linewidth=1.2, color="purple", label="mAP")
+    ax1.set_xlabel("Simulation time (min)")
+    ax1.set_ylabel("Mean Average Precision")
+    ax1.set_title("FL Detection Accuracy")
+    ax1.legend()
+    ax1.grid(True, alpha=0.3)
+
+    t, loss = metrics.get_series("fl_loss")
+    if t:
+        ax2.plot(t, loss, linewidth=1.2, color="red")
+    ax2.set_xlabel("Simulation time (min)")
+    ax2.set_ylabel("Avg training loss")
+    ax2.set_title("FL Training Loss")
+    ax2.grid(True, alpha=0.3)
+
     plt.tight_layout()
     if save_path:
         fig.savefig(save_path, dpi=150)
@@ -168,6 +203,9 @@ def plot_all(
         else:
             func(metrics, outages=outages, save_path=p)
         paths.append(p)
+    p_acc = str(out / "fl_accuracy.png")
+    plot_fl_accuracy(metrics, save_path=p_acc)
+    paths.append(p_acc)
     if dt_errors:
         p = str(out / "dt_estimation_error.png")
         plot_dt_estimation_error(dt_errors, outages=outages, save_path=p)

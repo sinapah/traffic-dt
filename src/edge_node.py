@@ -1,9 +1,15 @@
 from __future__ import annotations
 
+import copy
+import threading
+
 import simpy
 import numpy as np
+import torch
+from torch.utils.data import DataLoader
 
 from src.config import EdgeConfig, FLConfig, SimulationConfig
+from src.dataset import DetracDataset
 from src.queue import BoundedQueue, Frame
 from src.telemetry import TelemetryBus, TelemetryPacket
 
@@ -16,6 +22,8 @@ class EdgeNode:
         sim_config: SimulationConfig,
         bus: TelemetryBus,
         rng: np.random.Generator,
+        model: torch.nn.Module | None = None,
+        assigned_dataset: torch.utils.data.Dataset | None = None,
     ):
         self.env = env
         self.config = config
@@ -23,6 +31,8 @@ class EdgeNode:
         self.bus = bus
         self.rng = rng
         self.queue = BoundedQueue(config.queue_capacity)
+        self.model = model
+        self.assigned_dataset = assigned_dataset
 
         self.service_rate = config.service_rate
         self.sampling_rate = 1.0
@@ -43,6 +53,8 @@ class EdgeNode:
 
         self.training_process: simpy.Process | None = None
         self._training_duration = 0.0
+        self._trained_state: dict[str, torch.Tensor] | None = None
+        self._training_loss: float = 0.0
 
     @property
     def utilization(self) -> float:
@@ -84,15 +96,66 @@ class EdgeNode:
 
     def _training_loop(self, fl_config: FLConfig) -> simpy.Generator:
         self._training_active = True
-        cost = (
-            fl_config.local_epochs
-            * fl_config.batch_size
-            * fl_config.dataset_size
-            * fl_config.cost_per_unit
-        )
-        training_time = cost
-        self._training_duration = training_time
-        yield self.env.timeout(training_time)
+        self._trained_state = None
+        self._training_loss = 0.0
+
+        if self.model is not None and self.assigned_dataset is not None and len(self.assigned_dataset) > 0:
+            result = {}
+
+            def _train():
+                loader = DataLoader(
+                    self.assigned_dataset,
+                    batch_size=fl_config.batch_size,
+                    shuffle=True,
+                    collate_fn=DetracDataset.collate_fn,
+                    num_workers=0,
+                )
+                model_copy = copy.deepcopy(self.model)
+                model_copy.train()
+                params = [p for p in model_copy.parameters() if p.requires_grad]
+                optimizer = torch.optim.SGD(params, lr=fl_config.learning_rate, momentum=0.9, weight_decay=1e-4)
+                total_loss = 0.0
+                num_batches = 0
+                for _ in range(fl_config.fine_tune_epochs):
+                    for images, targets in loader:
+                        images = [img.to("cpu") for img in images]
+                        targets = [{k: v.to("cpu") for k, v in t.items()} for t in targets]
+                        loss_dict = model_copy(images, targets)
+                        loss = sum(loss_dict.values())
+                        optimizer.zero_grad()
+                        loss.backward()
+                        optimizer.step()
+                        total_loss += loss.item()
+                        num_batches += 1
+                result["state_dict"] = copy.deepcopy(model_copy.state_dict())
+                result["loss"] = total_loss / max(num_batches, 1)
+
+            thread = threading.Thread(target=_train, daemon=True)
+            thread.start()
+
+            cost = (
+                fl_config.local_epochs
+                * fl_config.batch_size
+                * fl_config.dataset_size
+                * fl_config.cost_per_unit
+            )
+            training_time = cost
+            self._training_duration = training_time
+            yield self.env.timeout(training_time)
+            thread.join()
+            self._trained_state = result.get("state_dict")
+            self._training_loss = result.get("loss", 0.0)
+        else:
+            cost = (
+                fl_config.local_epochs
+                * fl_config.batch_size
+                * fl_config.dataset_size
+                * fl_config.cost_per_unit
+            )
+            training_time = cost
+            self._training_duration = training_time
+            yield self.env.timeout(training_time)
+
         self._training_active = False
         self._training_done.succeed()
 
@@ -131,6 +194,12 @@ class EdgeNode:
         self._total_processed_window = self.queue.total_processed
         self._total_arrivals_window = self.queue.total_arrivals
         self._window_start = self.env.now
+
+    def get_trained_state(self) -> dict[str, torch.Tensor] | None:
+        return self._trained_state
+
+    def get_training_loss(self) -> float:
+        return self._training_loss
 
     def apply_parameters(
         self,
