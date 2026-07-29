@@ -11,18 +11,24 @@ python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
 
-# Run comparison: baseline (no DT) vs DT-driven
-python -m src.main --mode compare
+# DT-driven run (no telemetry outage by default)
+python -m src.main --mode dt
 
-# Run individual modes
-python -m src.main --mode single        # DT-driven only
-python -m src.main --mode baseline      # No DT, no orchestrator
+# DT-driven run with telemetry outage using KDE prediction
+python -m src.main --mode dt --outage kde
 
-# Custom seed
-python -m src.main --seed 123
+# DT-driven run with telemetry outage using WGAN prediction
+python -m src.main --mode dt --outage wgan
+
+# Baseline run (no DT, no orchestrator)
+python -m src.main --mode baseline
+
+# Regenerate plots from saved telemetry data
+python -m src.main --mode plot --input output/dt
+python -m src.main --mode plot --input output/baseline
 ```
 
-Outputs go to `output/`: PNG plots and `metrics_summary.json` per run.
+Outputs go to `output/`: PNG plots, metrics summary, full telemetry timeseries, and a config snapshot per run.
 
 ## Architecture
 
@@ -202,30 +208,37 @@ The default config file is `config/default.json`. Key parameters:
 
 ## Outputs
 
-Running `--mode compare` produces the following directory structure under `output/`:
+Each run creates a subdirectory under `output/` with the following files:
 
 ```
 output/
-  baseline/                      # Reference run (no DT)
+  baseline/                      # Baseline run (no DT)
     queue_length.png
     utilization.png
     latency.png
     throughput.png
     fl_convergence.png
-    metrics_summary.json
+    metrics_summary.json         # Aggregate stats (mean, max, p50, p95)
+    metrics_timeseries.json      # Full (timestamp, value, tags) entries
+    config.json                  # Config snapshot used for the run
   dt/                            # DT-driven run
     queue_length.png
     utilization.png
     latency.png
     throughput.png
     fl_convergence.png
-    dt_estimation_error.png
+    dt_estimation_error.png      # Only if outage was active
     metrics_summary.json
-    historical/                  # Strategy-specific distribution analysis
+    metrics_timeseries.json
+    dt_errors.json               # DT estimation error timeseries (outage only)
+    config.json
+    kde/                         # Strategy-specific distribution analysis
       distribution_histograms.png
       distribution_correlations.png
       distribution_joint.png
       distribution_errors.json
+    wgan/
+      ...
 ```
 
 | Plot | What it shows |

@@ -62,3 +62,11 @@ class MetricsCollector:
             }
             for e in self._entries
         ]
+
+    @classmethod
+    def from_dicts(cls, data: list[dict]) -> MetricsCollector:
+        mc = cls()
+        for d in data:
+            tags = {k: v for k, v in d.items() if k not in ("timestamp", "name", "value")}
+            mc.record(d["timestamp"], d["name"], d["value"], **tags)
+        return mc
