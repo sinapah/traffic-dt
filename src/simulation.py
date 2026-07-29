@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import random
 from dataclasses import dataclass
 
@@ -20,6 +21,8 @@ from src.metrics import MetricsCollector
 from torch.utils.data import Subset
 from src.dataset import DetracDataset
 from src.model import create_model
+
+log = logging.getLogger(__name__)
 
 
 @dataclass
@@ -50,6 +53,10 @@ class Simulation:
         val_loader: DataLoader | None = None
         base_seed = self.config.seed or 42
         if self.config.dataset_path and self.config.annotation_path:
+            log.info(
+                "Loading dataset from %s ...",
+                self.config.dataset_path,
+            )
             dataset = DetracDataset(
                 image_root=self.config.dataset_path,
                 annotation_root=self.config.annotation_path,
@@ -60,6 +67,10 @@ class Simulation:
             n_val = max(1, int(n * self.config.global_val_ratio))
             val_idx = perm[:n_val]
             train_idx = perm[n_val:]
+            log.info(
+                "Dataset loaded: %d samples (%d train, %d val)",
+                n, len(train_idx), n_val,
+            )
             val_dataset = Subset(dataset, val_idx)
             val_loader = DataLoader(
                 val_dataset,
@@ -77,6 +88,7 @@ class Simulation:
         ]
         for ec in edge_configs:
             edge_rng = np.random.default_rng(self.rng.integers(0, 2**32))
+            log.info("Creating model for edge %d ...", ec.edge_id)
             edge_model = create_model(pretrained=True) if dataset is not None else None
             edge_ds = None
             if dataset is not None and train_indices is not None:
@@ -126,6 +138,7 @@ class Simulation:
             )
             cameras.append(cam)
 
+        log.info("Creating global FL model ...")
         global_model = create_model(pretrained=True) if dataset is not None else None
         fl_coordinator = FLCoordinator(
             env,
@@ -199,7 +212,12 @@ class Simulation:
         env.process(outage_controller())
         env.process(metrics_collector())
 
+        log.info(
+            "Running simulation (duration=%.1f, dt_enabled=%s) ...",
+            self.config.duration, dt_enabled,
+        )
         env.run(until=self.config.duration)
+        log.info("Simulation complete.")
 
         return SimulationResult(
             config=self.config,

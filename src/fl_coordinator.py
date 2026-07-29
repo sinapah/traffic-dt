@@ -2,6 +2,9 @@ from __future__ import annotations
 
 import math
 import random
+import logging
+import gc
+import ctypes
 from collections import OrderedDict
 
 import simpy
@@ -11,6 +14,8 @@ from torch.utils.data import DataLoader
 from src.config import FLConfig
 from src.dataset import DetracDataset
 from src.model import evaluate
+
+log = logging.getLogger(__name__)
 
 
 class FLCoordinator:
@@ -50,6 +55,8 @@ class FLCoordinator:
             training_events = []
             active_edges = []
 
+            # Trigger all participating edges concurrently — each trains only on
+            # images it processed since the last round, so per-edge memory is small.
             for edge in edges:
                 if self.rng.random() < self.config.participation_rate:
                     evt = edge.trigger_training(
@@ -59,7 +66,12 @@ class FLCoordinator:
                     active_edges.append(edge)
 
             if training_events:
-                yield simpy.AnyOf(self.env, training_events)
+                yield simpy.AllOf(self.env, training_events)
+
+            log.info(
+                "FL round %d — aggregating %d edge(s) ...",
+                self.round_number, len(active_edges),
+            )
 
             state_dicts = []
             losses = []
@@ -80,14 +92,27 @@ class FLCoordinator:
                 self.round_losses.append(avg_loss)
 
                 if self.val_loader is not None and self.global_model is not None:
+                    log.info("FL round %d — evaluating global model on validation set ...", self.round_number)
                     acc = evaluate(self.global_model, self.val_loader)
                     self.round_accuracy.append(acc)
                     mAP = acc.get("mAP", 0.0)
                     self._current_convergence = mAP
+                    log.info(
+                        "FL round %d complete — loss=%.4f  mAP=%.4f",
+                        self.round_number, avg_loss, mAP,
+                    )
                 else:
                     self._current_convergence = self._compute_convergence(self.round_number)
+                    log.info(
+                        "FL round %d complete — loss=%.4f  convergence=%.4f",
+                        self.round_number, avg_loss, self._current_convergence,
+                    )
             else:
                 self._current_convergence = self._compute_convergence(self.round_number)
+                log.info(
+                    "FL round %d — no participants, convergence=%.4f",
+                    self.round_number, self._current_convergence,
+                )
 
             round_duration = self.env.now - round_start
             self.round_durations.append(round_duration)
@@ -101,6 +126,9 @@ class FLCoordinator:
                 participants=len(active_edges),
                 convergence=self._current_convergence,
             )
+
+            gc.collect()
+            ctypes.CDLL("libc.so.6").malloc_trim(0)
 
     def _compute_convergence(self, round_num: int) -> float:
         ceiling = self.config.convergence_ceiling

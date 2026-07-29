@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import xml.etree.ElementTree as ET
 from pathlib import Path
 from typing import Any
@@ -8,6 +9,8 @@ import torch
 from torch.utils.data import Dataset, Subset
 from torchvision.io import read_image, ImageReadMode
 from torchvision.transforms import v2 as T
+
+log = logging.getLogger(__name__)
 
 
 VEHICLE_LABELS = {"car": 1, "van": 2, "bus": 3}
@@ -77,10 +80,12 @@ class DetracDataset(Dataset):
         ann_dir = Path(annotation_root)
 
         seq_dirs = sorted(d for d in image_dir.iterdir() if d.is_dir())
+        n_seqs = len(seq_dirs)
+        log.info("Scanning %d image sequence(s) in %s ...", n_seqs, self.image_root)
 
         ann_cache: dict[str, dict[int, list[dict[str, Any]]]] = {}
 
-        for seq_dir in seq_dirs:
+        for i, seq_dir in enumerate(seq_dirs, 1):
             seq_name = seq_dir.name
             ann_file = ann_dir / f"{seq_name}.xml"
             if not ann_file.exists():
@@ -103,6 +108,9 @@ class DetracDataset(Dataset):
                     "labels": labels,
                     "areas": areas,
                 })
+
+            if i % 10 == 0 or i == n_seqs:
+                log.info("  Parsed %d/%d sequences (%d samples so far) ...", i, n_seqs, len(self.samples))
 
     def __len__(self) -> int:
         return len(self.samples)

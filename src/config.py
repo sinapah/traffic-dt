@@ -94,7 +94,7 @@ class SimulationConfig:
     seed: int | None = None
     dataset_path: str = "DETRAC-Images/DETRAC-Images"
     annotation_path: str = "DETRAC-Train-Annotations-XML/DETRAC-Train-Annotations-XML"
-    global_val_ratio: float = 0.1
+    global_val_ratio: float = 0.01
 
     def to_dict(self) -> dict[str, Any]:
         d = {
@@ -240,7 +240,7 @@ class SimulationConfig:
             seed=d.get("seed"),
             dataset_path=d.get("dataset_path", "DETRAC-Images/DETRAC-Images"),
             annotation_path=d.get("annotation_path", "DETRAC-Train-Annotations-XML/DETRAC-Train-Annotations-XML"),
-            global_val_ratio=d.get("global_val_ratio", 0.1),
+            global_val_ratio=d.get("global_val_ratio", 0.01),
         )
 
     @classmethod

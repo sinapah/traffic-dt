@@ -1,0 +1,43 @@
+{
+  "queue_length": {
+    "mae": 4.916666666666667,
+    "rmse": 8.904118897079785,
+    "n_ground_truth": 60,
+    "n_synthesized": 60,
+    "mean_ground_truth": 5.8,
+    "mean_synthesized": 5.383333333333334
+  },
+  "arrival_rate": {
+    "mae": 6.830356000586748,
+    "rmse": 9.205769080226075,
+    "n_ground_truth": 60,
+    "n_synthesized": 60,
+    "mean_ground_truth": 9.4,
+    "mean_synthesized": 10.240065991365052
+  },
+  "utilization": {
+    "mae": 0.29681711468703137,
+    "rmse": 0.40149551149114454,
+    "n_ground_truth": 60,
+    "n_synthesized": 60,
+    "mean_ground_truth": 0.40634920634920635,
+    "mean_synthesized": 0.4606403190261498
+  },
+  "processing_rate": {
+    "mae": 7.108852339147961,
+    "rmse": 9.498937728377117,
+    "n_ground_truth": 60,
+    "n_synthesized": 60,
+    "mean_ground_truth": 10.7,
+    "mean_synthesized": 9.110913433835409
+  },
+  "mean_wait_time": {
+    "mae": 0.23804836819417818,
+    "rmse": 0.41433056044457434,
+    "n_ground_truth": 60,
+    "n_synthesized": 60,
+    "mean_ground_truth": 0.4987436456351115,
+    "mean_synthesized": 0.26246735321267844
+  },
+  "correlation_diff": 0.2991650418041682
+}

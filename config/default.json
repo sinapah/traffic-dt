@@ -16,7 +16,7 @@
   "fl": {
     "aggregation_interval": 5.0,
     "local_epochs": 2,
-    "batch_size": 32,
+    "batch_size": 4,
     "dataset_size": 100,
     "cost_per_unit": 0.001,
     "participation_rate": 1.0,
@@ -35,7 +35,7 @@
       "kde_min_samples": 5,
       "wgan_latent_dim": 8,
       "wgan_hidden_dim": 32,
-      "wgan_train_epochs": 100,
+      "wgan_train_epochs": 10,
       "wgan_lambda_gp": 10.0
     }
   },

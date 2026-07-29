@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import copy
+import logging
 from collections import defaultdict
 
 import torch
@@ -14,14 +15,18 @@ from src.dataset import DetracDataset
 NUM_CLASSES = 4  # background + car + van + bus
 _DEVICE = torch.device("cpu")
 
+log = logging.getLogger(__name__)
+
 
 def create_model(pretrained: bool = True) -> torch.nn.Module:
+    log.info("Loading pretrained fasterrcnn_mobilenet_v3_large_fpn weights ...")
     model = fasterrcnn_mobilenet_v3_large_fpn(
         weights="DEFAULT" if pretrained else None,
     )
     in_features = model.roi_heads.box_predictor.cls_score.in_features
     model.roi_heads.box_predictor = FastRCNNPredictor(in_features, NUM_CLASSES)
     model.to(_DEVICE)
+    log.info("Model ready.")
     return model
 
 
@@ -67,7 +72,10 @@ def evaluate(
     all_predictions: dict[int, list[dict]] = defaultdict(list)
     all_targets: dict[int, list[dict]] = defaultdict(list)
 
-    for images, targets in dataloader:
+    n_batches = len(dataloader)
+    for batch_idx, (images, targets) in enumerate(dataloader, 1):
+        if batch_idx == 1 or batch_idx % 10 == 0 or batch_idx == n_batches:
+            log.info("  Evaluating batch %d/%d ...", batch_idx, n_batches)
         images = [img.to(device) for img in images]
         preds = model(images)
         for i, (pred, tgt) in enumerate(zip(preds, targets)):
